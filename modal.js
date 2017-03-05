@@ -63,7 +63,7 @@ let DialogUtil = (function(){
 	}
 	function GenerateGuid(){
 		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-		var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+		let r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
 		return v.toString(16);
 		});
 	}
@@ -96,11 +96,14 @@ let DialogUtil = (function(){
                     let event = this.Events[evt][i];
                     if (event !== action) {
                         newArr.push(event);
-                    }
+                    } 
                 }
                 this.Events[evt] = newArr;
             }
     }
+	EventManager.prototype.UnbindAll = function(){
+		this.Events = {};
+	}
 	
 	let EventBinderFlags = function(evtName,action,domEvtName){
 		this.EventName = evtName;
@@ -125,6 +128,7 @@ let DialogUtil = (function(){
 	}
 	DialogControl.prototype.Dispose = function(){
 		try{
+			OpenDialogs.Remove(this.ParentDialog);
 			if(this.Parent != null){
 				DialogControl.prototype.RemoveControl.apply(this.Parent,[this]);
 			}
@@ -258,7 +262,7 @@ let DialogUtil = (function(){
 	}	
 	DialogControl.prototype.UpdateDom = function(hierarchy){
 		hierarchy = hierarchy || [];
-		this.DomNode.Id = this.Id;
+		this.DomNode.id = this.Id;
 	    let classStr = `${ClassNames.CreateControlClass(this)}`;
 		if(this.ClassName !== ""){
 			classStr += ` ${this.ClassName}`;
@@ -296,7 +300,7 @@ let DialogUtil = (function(){
 			this.DomNode.removeAttribute("data-dialog-guid");			
 		}
 		
-		var newHierarchy = Array.from(hierarchy);
+		let newHierarchy = Array.from(hierarchy);
 		newHierarchy.push(this);
 		for(let ctrl of this.Controls){
 			ctrl.UpdateDom(newHierarchy);
@@ -313,7 +317,7 @@ let DialogUtil = (function(){
 		}
 	}
 	DialogControl.prototype.RemoveControl = function(ctrl){
-		var idx = this.Controls.indexOf(ctrl);
+		let idx = this.Controls.indexOf(ctrl);
 		if(idx > -1){
 			this.Controls.splice(idx,1);
 			if(ctrl.DomNode != null && this.DomNode != null){
@@ -340,7 +344,7 @@ let DialogUtil = (function(){
 
 	let DialogTitleControl = function(){
 		let scope = this;
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["DialogTitleControl"].concat(args);
 		DialogControl.apply(scope,args);		
 		scope.DomNode = document.createElement("div");
@@ -374,7 +378,7 @@ let DialogUtil = (function(){
 
 	
 	let DialogGenericControl = function(node){
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["DialogGenericControl"].concat(args);
 		DialogControl.apply(this,args);		
 		this.DomNode = node;
@@ -385,7 +389,7 @@ let DialogUtil = (function(){
 	DialogGenericControl.prototype = Object.create(DialogControl.prototype);	
 	
 	let DialogButtonControl = function(){
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["DialogButton"].concat(args);
 		DialogControl.apply(this,args);
 		this.Text = "";
@@ -398,11 +402,11 @@ let DialogUtil = (function(){
 		DialogControl.prototype.UpdateDom.apply(this,arguments);
 	}
 	let DialogHtmlControl = function(html){
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["DialogHtmlControl"].concat(args);
 		DialogControl.apply(this,args);	
 		this.DomNode = document.createElement("div");
-		var _html = html || "";
+		let _html = html || "";
 		if(html instanceof HTMLElement){
 			_html = html.outerHTML;
 		}
@@ -424,27 +428,87 @@ let DialogUtil = (function(){
 	});
 	
 	let DialogInputControl = function(input){
+		if(!input){
+			input = document.createElement("input");
+			input.type = "text";
+		}
 		if( (input instanceof HTMLInputElement) === false){
 			throw Error("Element is not an HTMLInputElement");
 		}
-		var args = Array.from(arguments);
-		DialogGenericControl.apply(this,args);
+		DialogGenericControl.apply(this,[input]);
 		this.ControlName = "DialogInput";
 	}
 	DialogInputControl.prototype = Object.create(DialogGenericControl.prototype);
+	Object.defineProperty(DialogInputControl.prototype,"Value",{
+		get: function getValue(){
+			return this.DomNode.value;
+		},
+		set: function setValue(val){
+			this.DomNode.value = val;
+		}
+	});
+	Object.defineProperty(DialogInputControl.prototype,"Type",{
+		get: function getType(){
+			return this.DomNode.type;
+		},
+		set: function setValue(val){
+			this.DomNode.type = val;
+		}
+	});
 	
+	let DialogIframeControl = function(){
+		let args = Array.from(arguments);
+		args = ["DialogIframeControl"].concat(args);
+		DialogControl.apply(this,args);
+		this.DomNode = document.createElement("iframe");
+		Object.freeze(this.Controls);
+	}
+	DialogIframeControl.prototype = Object.create(DialogControl.prototype);
+	DialogIframeControl.prototype.UpdateDom = function(hierarchy){
+		DialogControl.prototype.UpdateDom.call(this,[hierarchy]);
+		if(!this.Source && !this.Html){
+			this.DomNode.className += ` ${ClassNames.HIDDEN}`;
+		}
+	}
+	Object.defineProperty(DialogIframeControl.prototype,"Source",{
+		get: function getSrc(){
+			return this.DomNode.src;
+		},
+		set: function setSrc(val){
+			this.DomNode.src = val;
+			this.DomNode.removeAttribute("srcdoc");
+		}
+	});
+	Object.defineProperty(DialogIframeControl.prototype,"Html",{
+		get: function getHtml(){
+			return this.DomNode.srcdoc;
+		},
+		set: function setHtml(val){
+			this.DomNode.srcdoc = val;
+			this.DomNode.removeAttribute("src");
+		}
+	});
 	
 	let DialogPanelControl = function(){
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["DialogPanelControl"].concat(args);
 		DialogControl.apply(this,args);		
 		this.DomNode = document.createElement("div");		
 	}
 	DialogPanelControl.prototype = Object.create(DialogControl.prototype);	
 	
-	let Dialog = function(html){
+	let DialogOptions = function(){
+		this.Html = "";
+		this.IframeSource = "";
+		this.IsIframe = false;
+		this.IsModal = false;
+	}
+	let Dialog = function(opts){
+		if(opts == null){
+			opts = new DialogOptions();
+		}
 		let scope = this;
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["Dialog"].concat(args);
 		DialogControl.apply(scope,args);
 		scope.DomNode = document.createElement("div");
@@ -452,14 +516,25 @@ let DialogUtil = (function(){
 		scope.Draggable = true;
 		
 		this.Title = new DialogTitleControl();
-		this.AddControl(this.Title);		
+		this.AddControl(this.Title);	
+
+		if(opts.IsIframe == true){
+			this.Iframe = new DialogIframeControl();
+			if(opts.IframeSource){
+				this.Iframe.Source = opts.IframeSource;
+			} 
+			else if(opts.Html){
+				this.Iframe.Html = opts.Html;
+			}
+			this.AddControl(this.Iframe);
+		}		
 		
 		let _mousedown = false;
 		let _mousedownOffset = null;
 		let _mousedownPt = null;
 		
-		if(html != null){
-			var ctrl = new DialogHtmlControl(html);
+		if(opts.Html && opts.IsIframe == false){
+			let ctrl = new DialogHtmlControl(opts.Html);
 			this.AddControl(ctrl);
 		}
 		
@@ -488,7 +563,6 @@ let DialogUtil = (function(){
 		},false);
 		
 		RegisteredDialogs.Register(this);
-		
 	}
 	Dialog.prototype = Object.create(DialogControl.prototype);
 	Dialog.prototype.Initialize = function(elm){
@@ -520,17 +594,27 @@ let DialogUtil = (function(){
 		this.DomNode.style.opacity = 0;
 		return true;
 	}	
-	let Modal = function(){
-		let dialog = new Dialog();
+	Dialog.prototype.IsOpen = function(){
+		return OpenDialogs.IsOpen(this);
+	}
+	let Modal = function(opts){
+		opts = opts || new DialogOptions();
+		let dialog = new Dialog(opts);
 		this.Dialog = dialog;		
-		var args = Array.from(arguments);
+		let args = Array.from(arguments);
 		args = ["Modal"].concat(args);
 		Dialog.apply(this,arguments);
+		this.DomNode = document.createElement("div");
 		this.Guid = dialog.Guid;
 		this.ControlName = "Modal";
 		dialog.Draggable = true;
 		dialog.Visible = true;
 		this.Draggable = false;
+		
+		if(opts.IsIframe){
+			this.RemoveControl(this.Iframe);
+			delete this.Iframe;
+		}
 		this.Controls.push(dialog);
 		this.DomNode.appendChild(this.Dialog.DomNode);
 		//Object.freeze(this.Controls);
@@ -550,8 +634,9 @@ let DialogUtil = (function(){
 		this.Dialog.RemoveControl(ctrl);
 	}
 	
-	let TemplateHeaderBody = function(isModal){
-		let dlg = isModal ? new Modal() : new Dialog();
+	let TemplateHeaderBody = function(opts){
+		opts = opts || new DialogOptions();
+		let dlg = opts.IsModal ? new Modal(opts) : new Dialog(opts);
 		let title = dlg.Title || dlg.Dialog.Title;
 		title.ClassName = "dialogutil_header";
 		let body = new DialogPanelControl();
@@ -563,9 +648,11 @@ let DialogUtil = (function(){
 		dlg.Body = body;
 		return dlg;
 	}
-	let TemplateBasicAlert = function(isModal){
-		let dlg = TemplateHeaderBody(isModal);
+	let TemplateBasicAlert = function(opts){
+		opts = opts || new DialogOptions();
+		let dlg = TemplateHeaderBody(opts);
 		let msg = new DialogHtmlControl();
+		dlg.MessageControl = msg;
 		dlg.SetMessage = function(m){
 			msg.Html = m;
 		}
@@ -583,8 +670,9 @@ let DialogUtil = (function(){
 	   
 		return dlg;
 	}
-	let TemplateHeaderBodyFooter = function(isModal){
-		let dlg = TemplateHeaderBody(isModal);
+	let TemplateHeaderBodyFooter = function(opts){
+		opts = opts || new DialogOptions();
+		let dlg = TemplateHeaderBody(opts);
 		let footer = new DialogPanelControl();
 		footer.ClassName = "dialogutil_footer";
 		dlg.Footer = footer;
@@ -592,8 +680,9 @@ let DialogUtil = (function(){
 		return dlg;
 	}
 	
-	let TemplateConfirmCancel = function(isModal){
-		let dlg = TemplateHeaderBodyFooter(isModal);
+	let TemplateConfirmCancel = function(opts){
+		opts = opts || new DialogOptions();
+		let dlg = TemplateHeaderBodyFooter(opts);
 		let confirmBtn = new DialogUtil.ButtonControl();
 		let cancelBtn = new DialogUtil.ButtonControl();
 		let message = new DialogUtil.HtmlControl("");
@@ -608,6 +697,7 @@ let DialogUtil = (function(){
 		   message.Html = msg;
 	   }
 	   dlg.Body.AddControl(message);
+	   dlg.MessageControl = message;
 	   dlg.Footer.AddControl(confirmBtn);
 	   dlg.Footer.AddControl(cancelBtn);
 	   dlg.Events.BindEvent("OnShow", function(){
@@ -625,8 +715,10 @@ let DialogUtil = (function(){
 	DialogUtil.HtmlControl = DialogHtmlControl;
 	DialogUtil.PanelControl = DialogPanelControl;
 	DialogUtil.InputControl =  DialogInputControl;
+	DialogUtil.IframeControl = DialogIframeControl;
 	DialogUtil.GenericControl = DialogGenericControl;
 	DialogUtil.EventBinderFlags = EventBinderFlags;
+	DialogUtil.DialogOptions = DialogOptions;
 	
 	DialogUtil.Templates = {};
 	DialogUtil.Templates.HeaderBodyFooter = TemplateHeaderBodyFooter;
