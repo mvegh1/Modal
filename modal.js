@@ -1,3 +1,4 @@
+
 let DialogUtil = (()=> {
     let DialogUtil = {};
     let RegisteredDialogs = {};
@@ -119,6 +120,47 @@ let DialogUtil = (()=> {
 		this.DomMethod = domMethod;
 	}
 
+	class AnimationTimer {
+		constructor(action,frequency){
+			this.Id = -1;
+			this.Action = action;
+			this._frequency = frequency;
+			this.OnStop = function (){}
+		}
+		Start(){
+			this.Id = setInterval(this.Action,this.Frequency)
+		}
+		Stop(){
+			if(this.Started){
+				clearInterval(this.Id);
+				this.Id = -1;
+				this.OnStop();
+			}
+		}
+		get Frequency(){
+			return this._frequency;
+		}
+		set Frequency(val){
+			this._frequency = val;
+			if(this.Started){
+				clearInterval(this.Id);
+				this.Start();
+			}
+		}
+		get Started(){
+			return this.Id > -1;
+		}
+	}
+	class FadeInTimer extends AnimationTimer {
+		constructor(action,frequency){
+			super(action,frequency);
+		}
+	}
+	class FadeOutTimer extends AnimationTimer {
+		constructor(action,frequency){
+			super(action,frequency);
+		}
+	}
     class DialogControl {
         constructor(name) {
             this.Guid = GenerateGuid();
@@ -130,6 +172,7 @@ let DialogUtil = (()=> {
             this.Id = "";	
             this.DomNode = null;
             this.Controls = [];
+			this._timer = null;
         }
 
         Dispose() {
@@ -220,7 +263,7 @@ let DialogUtil = (()=> {
 
         Show() {
             if(this.Visible === true){
-                return false;
+                //return false;
             }
             let rtn = this.Events.FireEvent("OnShow");
             if(rtn === false){
@@ -232,25 +275,37 @@ let DialogUtil = (()=> {
         }
 
         FadeIn(duration) {
+			if(this._timer){
+				this._timer.Stop();
+			}
+			let scope = this;
             if(this.Visible === true){
-                return false;
+                //return false;
             }
             duration = duration || 1000;
             let frames = (duration / 1000) * 30;
             let updateAmt = 1/frames;
             this.Show();
             this.DomNode.style.opacity = 0;
-            let id = setInterval( () =>{
-                this.DomNode.style.opacity = parseFloat(this.DomNode.style.opacity) + updateAmt;
-                if(+this.DomNode.style.opacity >= 1){
-                    this.DomNode.style.opacity = 1;
-                    clearInterval(id);
+            let timer = new FadeInTimer(() =>{
+                scope.DomNode.style.opacity = parseFloat(scope.DomNode.style.opacity) + updateAmt;
+                if(+scope.DomNode.style.opacity >= 1){
+                    timer.Stop();
                 }
             },33);
+			timer.OnStop = function(){
+				scope.DomNode.style.opacity = 1;		
+			}
+			timer.Start();
+			this._timer = timer;
             return true;
         }
 
         FadeOut(duration) {
+			if(this._timer){
+				this._timer.Stop();
+			}
+			let scope = this;
             if(this.Visible === false){
                 return false;
             }
@@ -261,17 +316,21 @@ let DialogUtil = (()=> {
             let updateAmt = 1/frames;
             this.Show();
             this.DomNode.style.opacity = 1;
-            let id = setInterval( () =>{
-                this.DomNode.style.opacity = parseFloat(this.DomNode.style.opacity) - updateAmt;
-                if(+this.DomNode.style.opacity <= 0){
-                    this.DomNode.style.opacity = 0;
-                    clearInterval(id);
-                    this.Hide();
-                    if(oldDisabled === false){
-                        this.Enable();
-                    }
+            let timer = new FadeOutTimer( () =>{
+                scope.DomNode.style.opacity = parseFloat(this.DomNode.style.opacity) - updateAmt;
+                if(+scope.DomNode.style.opacity <= 0){
+					timer.Stop();
                 }
             },33);
+			timer.OnStop = function(){
+				scope.DomNode.style.opacity = 0;
+				scope.Hide();
+				if(oldDisabled === false){
+					scope.Enable();
+				}				
+			}
+			timer.Start();
+			this._timer = timer;
             return true;
         }
 
@@ -490,6 +549,7 @@ let DialogUtil = (()=> {
             args = ["DialogIframeControl"].concat(args);
 			let iframe = document.createElement("iframe");
             super(iframe);
+			this.ControlName = "DialogIframeControl";
             Object.freeze(this.Controls);
         }
 
@@ -505,6 +565,7 @@ let DialogUtil = (()=> {
 		}
 
         set Source(val) {
+			this.DomNode.src = "";
 			this.DomNode.src = val;
 			this.DomNode.removeAttribute("srcdoc");
 		}
@@ -597,6 +658,7 @@ let DialogUtil = (()=> {
             },false);
             
             RegisteredDialogs.Register(this);
+			//this.Initialize();
         }
 
         Initialize(elm) {
@@ -630,7 +692,18 @@ let DialogUtil = (()=> {
             this.DomNode.style.opacity = 0;
             return true;
         }
-
+		
+        FadeOut(duration) {
+            let ok = DialogControl.prototype.FadeOut.call(this,[duration]);
+            if(!ok){
+                return false;
+            }
+            OpenDialogs.Remove(this);
+            return true;
+        }
+		SetTitle(title){
+			this.Title.Text = title;
+		}
         IsOpen() {
             return OpenDialogs.IsOpen(this);
         }
@@ -667,10 +740,12 @@ let DialogUtil = (()=> {
 				this.Dialog.AddControl(ctrl);
 			}
         }
-
         RemoveControl(ctrl) {
             this.Dialog.RemoveControl(ctrl);
         }
+		SetTitle(title){
+			this.Dialog.SetTitle(title);
+		}
     }
     //Modal.prototype = Object.create(Dialog.prototype);
 
@@ -695,9 +770,6 @@ let DialogUtil = (()=> {
 		dlg.MessageControl = msg;
 		dlg.SetMessage = m => {
 			msg.Html = m;
-		}
-		dlg.SetTitle = m => {
-			dlg.Header.Text = m;
 		}
 		dlg.Body.AddControl(msg);
 		
@@ -730,9 +802,6 @@ let DialogUtil = (()=> {
 	   cancelBtn.Text = "Cancel";
 	   dlg.ConfirmButton = confirmBtn;
 	   dlg.CancelButton = cancelBtn;
-	   dlg.SetTitle = title => {
-		   dlg.Header.Text = title;
-	   }
 	   dlg.SetMessage = msg => {
 		   message.Html = msg;
 	   }
@@ -759,6 +828,21 @@ let DialogUtil = (()=> {
     DialogUtil.GenericControl = DialogGenericControl;
     DialogUtil.EventBinderFlags = EventBinderFlags;
     DialogUtil.DialogOptions = DialogOptions;
+	DialogUtil.OpenDialogs = OpenDialogs;
+	DialogUtil.EmptyDialog = function(name){
+		let dlg = new Dialog(name);
+		for(let ctrl of dlg.Controls){
+			dlg.RemoveControl(ctrl);
+		}
+		return dlg;
+	}
+	DialogUtil.EmptyModal = function(name){
+		let dlg = new Modal(name);
+		for(let ctrl of dlg.Dialog.Controls){
+			dlg.RemoveControl(ctrl);
+		}
+		return dlg;
+	}
 
     DialogUtil.Templates = {};
     DialogUtil.Templates.HeaderBodyFooter = TemplateHeaderBodyFooter;
